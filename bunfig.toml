@@ -1,0 +1,8 @@
+[define]
+"MACRO.VERSION" = '"3.0.0-dev"'
+"MACRO.BUILD_TIME" = '""'
+"MACRO.PACKAGE_URL" = '"@anthropic-ai/claude-code"'
+"MACRO.NATIVE_PACKAGE_URL" = 'undefined'
+"MACRO.FEEDBACK_CHANNEL" = '"https://github.com/anthropics/claude-code/issues"'
+"MACRO.ISSUES_EXPLAINER" = '"file an issue at https://github.com/anthropics/claude-code/issues"'
+"MACRO.VERSION_CHANGELOG" = '""'
