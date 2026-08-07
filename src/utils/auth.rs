@@ -214,6 +214,11 @@ pub fn perform_logout() -> Result<(), String> {
     Ok(())
 }
 
+pub fn is_claude_ai_subscriber() -> bool {
+    let tokens = get_claude_ai_oauth_tokens();
+    should_use_claude_ai_auth(tokens.as_ref().map(|t| t.scopes.as_slice()))
+}
+
 pub fn has_anthropic_api_key_env() -> bool {
     std::env::var_os("ANTHROPIC_API_KEY").is_some_and(|v| !v.is_empty())
 }

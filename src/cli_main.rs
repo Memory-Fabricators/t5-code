@@ -143,8 +143,24 @@ where
     }
 
     if cli.print || cli.prompt.is_some() {
-        eprintln!("not yet ported: main print/prompt path");
-        std::process::exit(1);
+        let prompt = match &cli.prompt {
+            Some(p) if !p.is_empty() => p.clone(),
+            _ => {
+                eprintln!("Error: prompt required for print mode (e.g. t5-code -p \"hello\")");
+                std::process::exit(1);
+            }
+        };
+        let model = crate::utils::model::resolve_model(cli.model.as_deref());
+        match crate::services::api::messages::create_message(&model, &prompt, 1024).await {
+            Ok(text) => {
+                println!("{text}");
+                return;
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     eprintln!("not yet ported: interactive REPL (ratatui later)");
