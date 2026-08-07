@@ -66,7 +66,7 @@ async fn main() {
         && args.first().map(String::as_str) == Some("--dump-system-prompt")
     {
         profile_checkpoint("cli_dump_system_prompt_path");
-        t5_code::utils::config::enable_configs();
+        t5_code::utils::config::enable_configs_infallible();
         let model = {
             let model_idx = args.iter().position(|a| a == "--model");
             match model_idx {
@@ -129,12 +129,9 @@ async fn main() {
         )
     {
         profile_checkpoint("cli_bridge_path");
-        t5_code::utils::config::enable_configs();
+        t5_code::utils::config::enable_configs_infallible();
 
-        if t5_code::utils::auth::get_claude_ai_oauth_tokens()
-            .and_then(|t| t.access_token)
-            .is_none()
-        {
+        if t5_code::utils::auth::get_claude_ai_oauth_tokens().is_none() {
             t5_code::utils::process::exit_with_error(t5_code::bridge::types::BRIDGE_LOGIN_ERROR);
         }
 
@@ -169,7 +166,7 @@ async fn main() {
     // Fast-path for `daemon`
     if feature("DAEMON") && args.first().map(String::as_str) == Some("daemon") {
         profile_checkpoint("cli_daemon_path");
-        t5_code::utils::config::enable_configs();
+        t5_code::utils::config::enable_configs_infallible();
         t5_code::utils::sinks::init_sinks();
         let rest: Vec<String> = args.iter().skip(1).cloned().collect();
         if let Err(e) = t5_code::daemon::main::daemon_main(&rest).await {
@@ -186,7 +183,7 @@ async fn main() {
         ) || args.iter().any(|a| a == "--bg" || a == "--background"))
     {
         profile_checkpoint("cli_bg_path");
-        t5_code::utils::config::enable_configs();
+        t5_code::utils::config::enable_configs_infallible();
         let result = match args.first().map(String::as_str) {
             Some("ps") => {
                 let rest: Vec<String> = args.iter().skip(1).cloned().collect();
@@ -250,7 +247,7 @@ async fn main() {
             || args.iter().any(|a| a.starts_with("--worktree=")))
     {
         profile_checkpoint("cli_tmux_worktree_fast_path");
-        t5_code::utils::config::enable_configs();
+        t5_code::utils::config::enable_configs_infallible();
         if t5_code::utils::worktree_mode_enabled::is_worktree_mode_enabled() {
             match t5_code::utils::worktree::exec_into_tmux_worktree(&args).await {
                 Ok(result) if result.handled => return,

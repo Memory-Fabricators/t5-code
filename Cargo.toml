@@ -43,10 +43,13 @@ lto = "thin"
 strip = "symbols"
 
 [dependencies]
+base64 = "0.23.1"
 clap = { version = "4.6.6", features = ["derive"] }
+rand = { version = "0.10.2", features = ["simd_support"] }
 ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "macros", "std", "all-widgets"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream", "json", "http2"] }
 rootcause = "0.13.0"
-serde = { version = "1.0.229", default-features = false, features = ["derive"] }
-simd-json = { version = "0.17.3", default-features = false, features = ["serde_impl"] }
+serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1", default-features = false, features = ["std"] }
+sha2 = "0.11.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "sync", "time"] }

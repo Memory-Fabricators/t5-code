@@ -14,10 +14,12 @@ struct ProfilerState {
     checkpoints: Vec<(String, Instant)>,
 }
 
+use crate::utils::env_utils::is_env_var_truthy;
+
 fn state() -> &'static Mutex<ProfilerState> {
     static STATE: OnceLock<Mutex<ProfilerState>> = OnceLock::new();
     STATE.get_or_init(|| {
-        let detailed = is_env_truthy("CLAUDE_CODE_PROFILE_STARTUP");
+        let detailed = is_env_var_truthy("CLAUDE_CODE_PROFILE_STARTUP");
         // Sampled Statsig path deferred; enable when detailed or ant user type.
         let ant = std::env::var("USER_TYPE").ok().as_deref() == Some("ant");
         let enabled = detailed || ant;
@@ -33,13 +35,6 @@ fn state() -> &'static Mutex<ProfilerState> {
             checkpoints,
         })
     })
-}
-
-fn is_env_truthy(key: &str) -> bool {
-    matches!(
-        std::env::var(key).ok().as_deref(),
-        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
-    )
 }
 
 /// Record a checkpoint with the given name.

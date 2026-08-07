@@ -10,6 +10,7 @@ pub mod cli;
 pub mod cli_main;
 pub mod constants;
 pub mod daemon;
+pub mod entrypoints;
 pub mod environment_runner;
 pub mod self_hosted_runner;
 pub mod services;

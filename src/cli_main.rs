@@ -4,6 +4,13 @@
 
 use clap::{Parser, Subcommand};
 
+use crate::cli::handlers::auth::{auth_login, auth_logout, auth_status};
+use crate::entrypoints::init;
+use crate::utils::config::{
+    get_global_config, global_config_file_exists, global_config_path_string,
+};
+use crate::utils::startup_profiler::profile_checkpoint;
+
 /// Claude Code / t5-code CLI (Rust port in progress).
 #[derive(Debug, Parser)]
 #[command(
@@ -39,7 +46,7 @@ pub enum Commands {
     /// Authentication commands
     Auth {
         #[command(subcommand)]
-        action: Option<AuthCommands>,
+        action: AuthCommands,
     },
     /// Log in
     Login,
@@ -55,9 +62,16 @@ pub enum Commands {
 
 #[derive(Debug, Subcommand)]
 pub enum AuthCommands {
+    /// Log in (browser OAuth deferred; supports refresh-token env)
     Login,
+    /// Log out
     Logout,
-    Status,
+    /// Show auth status (JSON by default)
+    Status {
+        /// Emit human-readable text instead of JSON
+        #[arg(long)]
+        text: bool,
+    },
 }
 
 /// Entry called from `entrypoints/cli.rs` after fast-path dispatch.
@@ -73,6 +87,14 @@ where
 {
     let cli = Cli::parse_from(args);
 
+    profile_checkpoint("preAction_start");
+    if let Err(e) = init::init().await {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+    crate::utils::sinks::init_sinks();
+    profile_checkpoint("preAction_after_init");
+
     if let Some(cmd) = &cli.command {
         match cmd {
             Commands::Update => {
@@ -80,24 +102,38 @@ where
                 std::process::exit(1);
             }
             Commands::Auth { action } => {
-                eprintln!("not yet ported: auth {action:?}");
-                std::process::exit(1);
+                let result = match action {
+                    AuthCommands::Login => auth_login().await,
+                    AuthCommands::Logout => auth_logout().await,
+                    AuthCommands::Status { text } => auth_status(!text).await,
+                };
+                if let Err(e) = result {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+                return;
             }
             Commands::Login => {
-                eprintln!("not yet ported: login");
-                std::process::exit(1);
+                if let Err(e) = auth_login().await {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+                return;
             }
             Commands::Logout => {
-                eprintln!("not yet ported: logout");
-                std::process::exit(1);
+                if let Err(e) = auth_logout().await {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+                return;
             }
             Commands::Mcp => {
                 eprintln!("not yet ported: mcp");
                 std::process::exit(1);
             }
             Commands::Doctor => {
-                eprintln!("not yet ported: doctor");
-                std::process::exit(1);
+                run_doctor();
+                return;
             }
             Commands::Install => {
                 eprintln!("not yet ported: install");
@@ -113,4 +149,32 @@ where
 
     eprintln!("not yet ported: interactive REPL (ratatui later)");
     std::process::exit(1);
+}
+
+fn run_doctor() {
+    let path = global_config_path_string();
+    let status = if global_config_file_exists() {
+        "ok (file present)"
+    } else {
+        "ok (missing → defaults)"
+    };
+    let cfg = get_global_config();
+    let (source, has_token) = crate::utils::auth::get_auth_token_source();
+    println!("T5 Code (Claude Code) doctor");
+    println!("  version: {}", env!("CARGO_PKG_VERSION"));
+    println!("  config:  {path} — {status}");
+    if let Some(t) = &cfg.first_start_time {
+        println!("  firstStartTime: {t}");
+    }
+    println!("  theme: {}", cfg.theme);
+    println!(
+        "  auth:   {} ({})",
+        if has_token {
+            "logged in"
+        } else {
+            "not logged in"
+        },
+        source.as_str()
+    );
+    println!("ok");
 }
