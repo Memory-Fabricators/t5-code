@@ -2,9 +2,9 @@
 
 use serde_json::{Value, json};
 use std::fs;
-use std::path::Path;
 
-use super::{ReadFileEntry, ReadFileState, ToolResult};
+use super::state::{update_read_state, validate_read_before_write};
+use super::{ReadFileState, ToolResult};
 use crate::constants::tool_names::{FILE_READ_TOOL_NAME, FILE_WRITE_TOOL_NAME};
 use crate::utils::expand_path::expand_path;
 
@@ -101,22 +101,7 @@ pub fn execute(input: &Value, state: &mut ReadFileState) -> ToolResult {
         };
     }
 
-    let mtime_ms = fs::metadata(&path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-
-    state.insert(
-        path.clone(),
-        ReadFileEntry {
-            content: content.to_string(),
-            timestamp: mtime_ms,
-            offset: None,
-            limit: None,
-        },
-    );
+    update_read_state(state, path, content.to_string());
 
     let msg = if exists {
         format!("The file {file_path} has been updated successfully.")
@@ -128,45 +113,4 @@ pub fn execute(input: &Value, state: &mut ReadFileState) -> ToolResult {
         content: msg,
         is_error: false,
     }
-}
-
-fn validate_read_before_write(path: &Path, state: &ReadFileState) -> Result<(), String> {
-    let entry = match state.get(path) {
-        Some(e) if !e.is_partial_view() => e,
-        Some(_) => {
-            return Err("File has not been read yet. Read it first before writing to it.".into());
-        }
-        None => {
-            return Err("File has not been read yet. Read it first before writing to it.".into());
-        }
-    };
-
-    let mtime_ms = fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| (d.as_millis() as u64).saturating_sub(0));
-
-    if let Some(mtime) = mtime_ms {
-        let last = mtime; // floor already via integer ms
-        if last > entry.timestamp {
-            // Content fallback for false-positive mtime bumps
-            if let Ok(on_disk) = fs::read_to_string(path) {
-                let normalized = on_disk.replace("\r\n", "\n");
-                if normalized != entry.content {
-                    return Err(
-                        "File has been modified since read, either by the user or by a linter. Read it again before attempting to write it."
-                            .into(),
-                    );
-                }
-            } else {
-                return Err(
-                    "File has been modified since read, either by the user or by a linter. Read it again before attempting to write it."
-                        .into(),
-                );
-            }
-        }
-    }
-
-    Ok(())
 }

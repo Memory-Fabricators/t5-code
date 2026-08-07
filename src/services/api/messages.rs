@@ -8,9 +8,10 @@ use crate::constants::oauth::{BASE_API_URL, OAUTH_BETA_HEADER};
 use crate::constants::prompts::get_system_prompt;
 use crate::constants::system::build_system_blocks;
 use crate::tools::{
-    ReadFileState, api_tool_definitions, enabled_tool_names, execute_tool, tool_result_block,
+    ToolSession, api_tool_definitions, enabled_tool_names, execute_tool, tool_result_block,
 };
 use crate::utils::auth::{check_and_refresh_oauth_token_if_needed, is_claude_ai_subscriber};
+use crate::utils::claudemd::{get_user_context, prepend_user_context};
 use crate::utils::http::{get_auth_headers, get_user_agent};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -182,10 +183,9 @@ pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortR
     let core = get_system_prompt(&tool_names, model, &[]).await?;
     let system_blocks = build_system_blocks(prompt, true, &core);
 
-    let mut messages = json!([
-        { "role": "user", "content": prompt }
-    ]);
-    let mut state = ReadFileState::new();
+    let user_ctx = get_user_context();
+    let mut messages = prepend_user_context(prompt, &user_ctx);
+    let mut session = ToolSession::default();
     let mut final_text = String::new();
 
     for _ in 0..MAX_TOOL_TURNS {
@@ -221,7 +221,7 @@ pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortR
             let id = tu.id.as_deref().unwrap_or("");
             let name = tu.name.as_deref().unwrap_or("");
             let input = tu.input.as_ref().unwrap_or(&empty);
-            let result = execute_tool(name, input, &mut state);
+            let result = execute_tool(name, input, &mut session).await;
             results.push(tool_result_block(id, &result));
         }
 

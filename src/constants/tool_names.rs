@@ -11,6 +11,7 @@ pub const TASK_CREATE_TOOL_NAME: &str = "TaskCreate";
 pub const ASK_USER_QUESTION_TOOL_NAME: &str = "AskUserQuestion";
 
 /// Default tool names for -p / early boot before the full tool registry is ported.
+/// AskUserQuestion omitted — needs interactive elicitation.
 pub fn default_enabled_tool_names() -> Vec<String> {
     [
         BASH_TOOL_NAME,
@@ -20,7 +21,6 @@ pub fn default_enabled_tool_names() -> Vec<String> {
         GLOB_TOOL_NAME,
         GREP_TOOL_NAME,
         TODO_WRITE_TOOL_NAME,
-        ASK_USER_QUESTION_TOOL_NAME,
     ]
     .into_iter()
     .map(str::to_string)

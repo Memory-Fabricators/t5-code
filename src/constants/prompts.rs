@@ -285,6 +285,10 @@ pub fn compute_simple_env_info(
     env_items.push(BulletItem::Line(format!(
         "Fast mode for Claude Code uses the same {FRONTIER_MODEL_NAME} model with faster output. It does NOT switch to a different model. It can be toggled with /fast."
     )));
+    env_items.push(BulletItem::Line(format!(
+        "Today's date is {}.",
+        chrono_today()
+    )));
 
     let mut lines = vec![
         "# Environment".to_string(),

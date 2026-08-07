@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod claude_in_chrome;
+pub mod claudemd;
 pub mod computer_use;
 pub mod config;
 pub mod early_input;
