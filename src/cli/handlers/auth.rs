@@ -3,10 +3,10 @@
 use rootcause::Report;
 
 use crate::PortResult;
-use crate::services::oauth::client::refresh_oauth_token;
+use crate::services::oauth::client::{populate_oauth_account_info_if_needed, refresh_oauth_token};
 use crate::utils::auth::{
-    AuthTokenSource, auth_status_json, get_auth_token_source, perform_logout,
-    save_oauth_tokens_if_needed,
+    AuthTokenSource, auth_status_json, check_and_refresh_oauth_token_if_needed,
+    get_auth_token_source, perform_logout, save_oauth_tokens_if_needed,
 };
 use crate::utils::config::save_global_config;
 
@@ -15,6 +15,10 @@ fn report_msg(msg: impl Into<String>) -> Report {
 }
 
 pub async fn auth_status(json: bool) -> PortResult<()> {
+    // Refresh expired tokens before reporting status.
+    let _ = check_and_refresh_oauth_token_if_needed(0, false).await;
+    let _ = populate_oauth_account_info_if_needed().await;
+
     let output = auth_status_json();
     let logged_in = output
         .get("loggedIn")
@@ -87,6 +91,7 @@ pub async fn auth_login() -> PortResult<()> {
 
             let _ = perform_logout();
             save_oauth_tokens_if_needed(&tokens).map_err(report_msg)?;
+            let _ = populate_oauth_account_info_if_needed().await;
 
             save_global_config(|mut current| {
                 if current

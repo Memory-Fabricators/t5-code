@@ -27,6 +27,10 @@ pub async fn init() -> PortResult<()> {
     profile_checkpoint("init_safe_env_vars_applied");
 
     record_first_start_time();
+
+    // Populate OAuth account / refresh if needed (fire-and-forget errors).
+    let _ = crate::services::oauth::client::populate_oauth_account_info_if_needed().await;
+
     profile_checkpoint("init_function_end");
 
     Ok(())
