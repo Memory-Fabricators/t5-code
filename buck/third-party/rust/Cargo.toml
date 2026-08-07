@@ -1,0 +1,25 @@
+[package]
+name = "rust-third-party"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "dummy"
+path = "dummy.rs"
+
+[profile.dev]
+opt-level = 1
+lto = "thin"
+split-debuginfo = "packed"
+
+[dependencies]
+serde = { version = "1.0.229", default-features = false, features = ["derive"] }
+simd-json = { version = "0.17.3", default-features = false, features = ["serde_impl"] }
+zerodds-http2 = { version = "1.0.0-rc.6", default-features = false, features = ["alloc"] }
+zerodds-hpack = { version = "1.0.0-rc.6", default-features = false, features = ["alloc"] }
+rustix = { version = "1.1.4", default-features = false, features = ["net", "time"] }
+
+[lints.clippy]
+std_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+alloc_instead_of_core = "warn"

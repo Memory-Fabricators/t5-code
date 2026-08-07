@@ -1,0 +1,57 @@
+load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
+load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
+load(":cxx.bzl", "cross_cxx_toolchain")
+load(":rust.bzl", "cross_rust_toolchain")
+
+cross_rust_toolchain(
+    name = "rust",
+    default_edition = "2024",
+    lto = True,
+    rustc_target_triple = select({
+        "prelude//os:none": select({
+            "prelude//cpu:arm64": "aarch64-unknown-none-softfloat",
+            "DEFAULT": None
+        }),
+        "DEFAULT": None
+    }),
+    visibility = ["PUBLIC"],
+)
+
+cross_cxx_toolchain(
+    name = "cxx",
+    lto = True,
+    linker = select({
+        # ld.lld already identifies as the gnu-flavored linker from its own
+        # name, so it can be invoked directly (no -flavor needed) - unlike
+        # rustc's bundled rust-lld, which needs rustc's own env/rpath setup
+        # to run standalone. A host build (proc-macros, build scripts) uses
+        # a cc-style linker line (-Wl,..., -mmacosx-version-min=...,
+        # -nodefaultlibs), which only a compiler driver understands, not a
+        # raw linker - so that branch goes through clang instead.
+        "prelude//os:none": "ld.lld",
+        "DEFAULT": "clang",
+    }),
+    # rustc's proc-macro/dylib loader keys off the file extension, which the
+    # rust prelude derives from `LinkerType` (darwin -> .dylib, gnu -> .so) -
+    # not from `shared_library_name_format` below (that only affects genuine
+    # cxx shared libraries, of which this project has none).
+    linker_type = select({
+        "DEFAULT": "gnu",
+        "prelude//os:macos": "darwin",
+    }),
+    shared_library_name_format = select({
+        "DEFAULT": "{}.so",
+        "prelude//os:macos": "{}.dylib",
+    }),
+    visibility = ["PUBLIC"],
+)
+
+system_python_bootstrap_toolchain(
+    name = "python_bootstrap",
+    visibility = ["PUBLIC"],
+)
+
+system_genrule_toolchain(
+    name = "genrule",
+    visibility = ["PUBLIC"],
+)

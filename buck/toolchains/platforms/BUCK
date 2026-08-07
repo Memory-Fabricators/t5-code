@@ -1,0 +1,8 @@
+platform(
+    name = "aarch64-unknown-none-softfloat",
+    constraint_values = [
+        "prelude//os/constraints:none",
+        "prelude//cpu/constraints:arm64",
+    ],
+    visibility = ["PUBLIC"],
+)
