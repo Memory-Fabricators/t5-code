@@ -72,45 +72,45 @@ pub async fn auth_logout() -> PortResult<()> {
 }
 
 pub async fn auth_login() -> PortResult<()> {
-    if let Ok(env_refresh) = std::env::var("CLAUDE_CODE_OAUTH_REFRESH_TOKEN") {
-        if !env_refresh.is_empty() {
-            let env_scopes = std::env::var("CLAUDE_CODE_OAUTH_SCOPES").map_err(|_| {
-                report_msg(
-                    "CLAUDE_CODE_OAUTH_SCOPES is required when using CLAUDE_CODE_OAUTH_REFRESH_TOKEN.\n\
+    if let Ok(env_refresh) = std::env::var("CLAUDE_CODE_OAUTH_REFRESH_TOKEN")
+        && !env_refresh.is_empty()
+    {
+        let env_scopes = std::env::var("CLAUDE_CODE_OAUTH_SCOPES").map_err(|_| {
+            report_msg(
+                "CLAUDE_CODE_OAUTH_SCOPES is required when using CLAUDE_CODE_OAUTH_REFRESH_TOKEN.\n\
                      Set it to the space-separated scopes the refresh token was issued with\n\
                      (e.g. \"user:inference\" or \"user:profile user:inference user:sessions:claude_code user:mcp_servers\").",
-                )
-            })?;
-            let scopes: Vec<String> = env_scopes
-                .split_whitespace()
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect();
+            )
+        })?;
+        let scopes: Vec<String> = env_scopes
+            .split_whitespace()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
 
-            let tokens = refresh_oauth_token(&env_refresh, Some(&scopes)).await?;
+        let tokens = refresh_oauth_token(&env_refresh, Some(&scopes)).await?;
 
-            let _ = perform_logout();
-            save_oauth_tokens_if_needed(&tokens).map_err(report_msg)?;
-            let _ = populate_oauth_account_info_if_needed().await;
+        let _ = perform_logout();
+        save_oauth_tokens_if_needed(&tokens).map_err(report_msg)?;
+        let _ = populate_oauth_account_info_if_needed().await;
 
-            save_global_config(|mut current| {
-                if current
-                    .extra
-                    .get("hasCompletedOnboarding")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-                {
-                    return current;
-                }
-                current
-                    .extra
-                    .insert("hasCompletedOnboarding".into(), serde_json::json!(true));
-                current
-            });
+        save_global_config(|mut current| {
+            if current
+                .extra
+                .get("hasCompletedOnboarding")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                return current;
+            }
+            current
+                .extra
+                .insert("hasCompletedOnboarding".into(), serde_json::json!(true));
+            current
+        });
 
-            println!("Login successful.");
-            return Ok(());
-        }
+        println!("Login successful.");
+        return Ok(());
     }
 
     eprintln!(

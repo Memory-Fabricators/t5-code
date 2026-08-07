@@ -95,9 +95,7 @@ pub async fn execute(input: &Value, cwd: &mut PathBuf) -> ToolResult {
     };
 
     let mut parts = Vec::new();
-    let stdout = result
-        .stdout
-        .trim_start_matches(|c: char| c == '\n' || c == '\r');
+    let stdout = result.stdout.trim_start_matches(['\n', '\r']);
     let stdout = stdout.trim_end();
     if !stdout.is_empty() {
         parts.push(stdout.to_string());

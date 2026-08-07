@@ -9,10 +9,10 @@ pub fn get_claude_config_home_dir() -> PathBuf {
     // Recompute when CLAUDE_CONFIG_DIR changes is rare; cache first observed value.
     CACHED
         .get_or_init(|| {
-            if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
-                if !dir.is_empty() {
-                    return PathBuf::from(dir);
-                }
+            if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR")
+                && !dir.is_empty()
+            {
+                return PathBuf::from(dir);
             }
             home_dir().join(".claude")
         })
@@ -20,15 +20,15 @@ pub fn get_claude_config_home_dir() -> PathBuf {
 }
 
 pub fn home_dir() -> PathBuf {
-    if let Ok(h) = std::env::var("HOME") {
-        if !h.is_empty() {
-            return PathBuf::from(h);
-        }
+    if let Ok(h) = std::env::var("HOME")
+        && !h.is_empty()
+    {
+        return PathBuf::from(h);
     }
-    if let Ok(h) = std::env::var("USERPROFILE") {
-        if !h.is_empty() {
-            return PathBuf::from(h);
-        }
+    if let Ok(h) = std::env::var("USERPROFILE")
+        && !h.is_empty()
+    {
+        return PathBuf::from(h);
     }
     PathBuf::from(".")
 }

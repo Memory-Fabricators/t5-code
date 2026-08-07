@@ -21,22 +21,22 @@ pub fn validate_read_before_write(path: &Path, state: &ReadFileState) -> Result<
         }
     };
 
-    if let Some(mtime) = file_mtime_ms(path) {
-        if mtime > entry.timestamp {
-            if let Ok(on_disk) = fs::read_to_string(path) {
-                let normalized = on_disk.replace("\r\n", "\n");
-                if normalized != entry.content {
-                    return Err(
-                        "File has been modified since read, either by the user or by a linter. Read it again before attempting to write it."
-                            .into(),
-                    );
-                }
-            } else {
+    if let Some(mtime) = file_mtime_ms(path)
+        && mtime > entry.timestamp
+    {
+        if let Ok(on_disk) = fs::read_to_string(path) {
+            let normalized = on_disk.replace("\r\n", "\n");
+            if normalized != entry.content {
                 return Err(
                     "File has been modified since read, either by the user or by a linter. Read it again before attempting to write it."
                         .into(),
                 );
             }
+        } else {
+            return Err(
+                "File has been modified since read, either by the user or by a linter. Read it again before attempting to write it."
+                    .into(),
+            );
         }
     }
 

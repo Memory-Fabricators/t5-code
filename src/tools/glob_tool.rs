@@ -132,7 +132,7 @@ fn glob_files(pattern: &str, search_dir: &Path) -> Result<(Vec<String>, bool), S
     }
 
     // Sort by modified ascending (oldest first), matching rg --sort=modified
-    matches.sort_by(|a, b| a.0.cmp(&b.0));
+    matches.sort_by_key(|a| a.0);
 
     let truncated = matches.len() > MAX_RESULTS;
     let files: Vec<String> = matches
@@ -140,10 +140,10 @@ fn glob_files(pattern: &str, search_dir: &Path) -> Result<(Vec<String>, bool), S
         .take(MAX_RESULTS)
         .map(|(_, p)| {
             // Prefer path relative to cwd when under cwd
-            if let Ok(cwd) = std::env::current_dir() {
-                if let Ok(rel) = p.strip_prefix(&cwd) {
-                    return rel.display().to_string();
-                }
+            if let Ok(cwd) = std::env::current_dir()
+                && let Ok(rel) = p.strip_prefix(&cwd)
+            {
+                return rel.display().to_string();
             }
             p.display().to_string()
         })

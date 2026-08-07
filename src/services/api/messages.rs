@@ -59,21 +59,21 @@ struct ApiErrorEnvelope {
 }
 
 fn format_api_error(status: reqwest::StatusCode, text: &str) -> String {
-    if let Ok(env) = serde_json::from_str::<ApiErrorEnvelope>(text) {
-        if let Some(err) = env.error {
-            let kind = err.kind.unwrap_or_default();
-            let msg = err.message.unwrap_or_default();
-            if !msg.is_empty() {
-                return format!("Messages API {status}: {kind}: {msg}");
-            }
+    if let Ok(env) = serde_json::from_str::<ApiErrorEnvelope>(text)
+        && let Some(err) = env.error
+    {
+        let kind = err.kind.unwrap_or_default();
+        let msg = err.message.unwrap_or_default();
+        if !msg.is_empty() {
+            return format!("Messages API {status}: {kind}: {msg}");
         }
     }
-    if let Ok(parsed) = serde_json::from_str::<MessagesResponse>(text) {
-        if let Some(err) = parsed.error {
-            let msg = err.message.or(err.kind).unwrap_or_default();
-            if !msg.is_empty() {
-                return format!("Messages API {status}: {msg}");
-            }
+    if let Ok(parsed) = serde_json::from_str::<MessagesResponse>(text)
+        && let Some(err) = parsed.error
+    {
+        let msg = err.message.or(err.kind).unwrap_or_default();
+        if !msg.is_empty() {
+            return format!("Messages API {status}: {msg}");
         }
     }
     format!("Messages API {status}: {text}")

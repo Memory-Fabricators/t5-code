@@ -124,13 +124,13 @@ pub fn execute(input: &Value, state: &mut ReadFileState) -> ToolResult {
                     is_error: true,
                 };
             }
-        } else if let Some(parent) = path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                return ToolResult {
-                    content: format!("Failed to create directory {}: {e}", parent.display()),
-                    is_error: true,
-                };
-            }
+        } else if let Some(parent) = path.parent()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            return ToolResult {
+                content: format!("Failed to create directory {}: {e}", parent.display()),
+                is_error: true,
+            };
         }
         if let Err(e) = fs::write(&path, new_string.as_bytes()) {
             return ToolResult {

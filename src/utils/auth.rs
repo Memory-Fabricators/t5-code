@@ -71,17 +71,17 @@ pub fn get_claude_ai_oauth_tokens() -> Option<OAuthTokens> {
         return None;
     }
 
-    if let Ok(token) = std::env::var("CLAUDE_CODE_OAUTH_TOKEN") {
-        if !token.is_empty() {
-            return Some(OAuthTokens {
-                access_token: token,
-                refresh_token: None,
-                expires_at: None,
-                scopes: vec!["user:inference".into()],
-                subscription_type: None,
-                rate_limit_tiers: None,
-            });
-        }
+    if let Ok(token) = std::env::var("CLAUDE_CODE_OAUTH_TOKEN")
+        && !token.is_empty()
+    {
+        return Some(OAuthTokens {
+            access_token: token,
+            refresh_token: None,
+            expires_at: None,
+            scopes: vec!["user:inference".into()],
+            subscription_type: None,
+            rate_limit_tiers: None,
+        });
     }
 
     let storage = secure_storage::read()?;
@@ -283,10 +283,9 @@ async fn check_and_refresh_oauth_token_if_needed_impl(retry_count: u32, force: b
             None => return false,
         };
 
-        if !force {
-            if tokens.refresh_token.is_none() || !is_oauth_token_expired(tokens.expires_at) {
-                return false;
-            }
+        if !force && (tokens.refresh_token.is_none() || !is_oauth_token_expired(tokens.expires_at))
+        {
+            return false;
         }
 
         let Some(refresh_token) = tokens.refresh_token.clone() else {

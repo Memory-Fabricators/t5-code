@@ -217,9 +217,6 @@ pub fn execute(input: &Value) -> ToolResult {
         args.push("-P".into());
         args.push("-e".into());
         args.push(format!("(?s){pattern}").into());
-    } else if pattern.starts_with('-') {
-        args.push("-e".into());
-        args.push(pattern.into());
     } else {
         args.push("-e".into());
         args.push(pattern.into());
@@ -344,16 +341,16 @@ fn relativize_line(line: &str, cwd: Option<&std::path::Path>) -> String {
 
 /// Minimal `{a,b}` expansion for --include patterns.
 fn expand_brace_glob(pattern: &str) -> Vec<String> {
-    if let (Some(start), Some(end)) = (pattern.find('{'), pattern.find('}')) {
-        if start < end {
-            let prefix = &pattern[..start];
-            let suffix = &pattern[end + 1..];
-            let inner = &pattern[start + 1..end];
-            return inner
-                .split(',')
-                .map(|part| format!("{prefix}{part}{suffix}"))
-                .collect();
-        }
+    if let (Some(start), Some(end)) = (pattern.find('{'), pattern.find('}'))
+        && start < end
+    {
+        let prefix = &pattern[..start];
+        let suffix = &pattern[end + 1..];
+        let inner = &pattern[start + 1..end];
+        return inner
+            .split(',')
+            .map(|part| format!("{prefix}{part}{suffix}"))
+            .collect();
     }
     vec![pattern.to_string()]
 }

@@ -58,21 +58,19 @@ pub fn local_iso_date() -> String {
     if let Ok(o) = std::process::Command::new("date")
         .args(["+%Y-%m-%d"])
         .output()
+        && o.status.success()
     {
-        if o.status.success() {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if !s.is_empty() {
-                return s;
-            }
+        let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+        if !s.is_empty() {
+            return s;
         }
     }
     if let Ok(o) = std::process::Command::new("date")
         .args(["-u", "+%Y-%m-%d"])
         .output()
+        && o.status.success()
     {
-        if o.status.success() {
-            return String::from_utf8_lossy(&o.stdout).trim().to_string();
-        }
+        return String::from_utf8_lossy(&o.stdout).trim().to_string();
     }
     "unknown".into()
 }

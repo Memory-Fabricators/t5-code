@@ -18,10 +18,10 @@ pub fn get_global_claude_file() -> PathBuf {
             let filename = format!(".claude{}.json", file_suffix_for_oauth_config());
             // Prefer CLAUDE_CONFIG_DIR parent layout matching TS:
             // join(process.env.CLAUDE_CONFIG_DIR || homedir(), filename)
-            if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
-                if !dir.is_empty() {
-                    return PathBuf::from(dir).join(filename);
-                }
+            if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR")
+                && !dir.is_empty()
+            {
+                return PathBuf::from(dir).join(filename);
             }
             home_dir().join(filename)
         })

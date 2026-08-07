@@ -76,22 +76,20 @@ pub fn execute(input: &Value, state: &mut ReadFileState) -> ToolResult {
     };
 
     let exists = path.exists();
-    if exists {
-        if let Err(msg) = validate_read_before_write(&path, state) {
-            return ToolResult {
-                content: msg,
-                is_error: true,
-            };
-        }
+    if exists && let Err(msg) = validate_read_before_write(&path, state) {
+        return ToolResult {
+            content: msg,
+            is_error: true,
+        };
     }
 
-    if let Some(parent) = path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            return ToolResult {
-                content: format!("Failed to create directory {}: {e}", parent.display()),
-                is_error: true,
-            };
-        }
+    if let Some(parent) = path.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        return ToolResult {
+            content: format!("Failed to create directory {}: {e}", parent.display()),
+            is_error: true,
+        };
     }
 
     if let Err(e) = fs::write(&path, content.as_bytes()) {
