@@ -1,4 +1,4 @@
-//! Minimal non-streaming Messages API client for `-p` print mode (with tool loop).
+//! Minimal non-streaming Messages API client (`-p` + interactive REPL tool loop).
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -174,23 +174,18 @@ async fn create_message_turn(
     }
 }
 
-/// Run a `-p` query with Read/Write tools until the model stops calling tools.
-pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortResult<String> {
-    let _ = check_and_refresh_oauth_token_if_needed(0, false).await;
-
-    let tool_names = enabled_tool_names();
-    let tools = api_tool_definitions();
-    let core = get_system_prompt(&tool_names, model, &[]).await?;
-    let system_blocks = build_system_blocks(prompt, true, &core);
-
-    let user_ctx = get_user_context();
-    let mut messages = prepend_user_context(prompt, &user_ctx);
-    let mut session = ToolSession::default();
+async fn run_tool_loop(
+    model: &str,
+    system_blocks: &[Value],
+    messages: &mut Value,
+    tools: &[Value],
+    session: &mut ToolSession,
+    max_tokens: u32,
+) -> PortResult<String> {
     let mut final_text = String::new();
 
     for _ in 0..MAX_TOOL_TURNS {
-        let resp =
-            create_message_turn(model, &system_blocks, &messages, &tools, max_tokens).await?;
+        let resp = create_message_turn(model, system_blocks, messages, tools, max_tokens).await?;
 
         let tool_uses: Vec<&ContentBlock> = resp
             .content
@@ -203,7 +198,6 @@ pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortR
             final_text = text;
         }
 
-        // Append assistant turn (full content blocks for pairing).
         if let Some(arr) = messages.as_array_mut() {
             arr.push(json!({
                 "role": "assistant",
@@ -221,7 +215,7 @@ pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortR
             let id = tu.id.as_deref().unwrap_or("");
             let name = tu.name.as_deref().unwrap_or("");
             let input = tu.input.as_ref().unwrap_or(&empty);
-            let result = execute_tool(name, input, &mut session).await;
+            let result = execute_tool(name, input, session).await;
             results.push(tool_result_block(id, &result));
         }
 
@@ -234,4 +228,74 @@ pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortR
     }
 
     Err(rootcause::report!(format!("Exceeded maximum tool turns ({MAX_TOOL_TURNS})")).into())
+}
+
+/// Multi-turn conversation for the interactive REPL (and reusable by `-p`).
+pub struct Conversation {
+    model: String,
+    max_tokens: u32,
+    is_non_interactive: bool,
+    core_sections: Vec<String>,
+    system_blocks: Option<Vec<Value>>,
+    tools: Vec<Value>,
+    messages: Value,
+    session: ToolSession,
+    context_seeded: bool,
+}
+
+impl Conversation {
+    pub async fn new(model: &str, max_tokens: u32, is_non_interactive: bool) -> PortResult<Self> {
+        let _ = check_and_refresh_oauth_token_if_needed(0, false).await;
+        let tool_names = enabled_tool_names();
+        let tools = api_tool_definitions();
+        let core_sections = get_system_prompt(&tool_names, model, &[]).await?;
+
+        Ok(Self {
+            model: model.to_string(),
+            max_tokens,
+            is_non_interactive,
+            core_sections,
+            system_blocks: None,
+            tools,
+            messages: json!([]),
+            session: ToolSession::default(),
+            context_seeded: false,
+        })
+    }
+
+    /// Append a user turn and run until the model stops calling tools.
+    pub async fn submit(&mut self, user_text: &str) -> PortResult<String> {
+        if self.system_blocks.is_none() {
+            self.system_blocks = Some(build_system_blocks(
+                user_text,
+                self.is_non_interactive,
+                &self.core_sections,
+            ));
+        }
+
+        if !self.context_seeded {
+            let user_ctx = get_user_context();
+            self.messages = prepend_user_context(user_text, &user_ctx);
+            self.context_seeded = true;
+        } else if let Some(arr) = self.messages.as_array_mut() {
+            arr.push(json!({ "role": "user", "content": user_text }));
+        }
+
+        let system = self.system_blocks.as_ref().unwrap();
+        run_tool_loop(
+            &self.model,
+            system,
+            &mut self.messages,
+            &self.tools,
+            &mut self.session,
+            self.max_tokens,
+        )
+        .await
+    }
+}
+
+/// Run a one-shot `-p` query with tools until the model stops calling tools.
+pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortResult<String> {
+    let mut conv = Conversation::new(model, max_tokens, true).await?;
+    conv.submit(prompt).await
 }

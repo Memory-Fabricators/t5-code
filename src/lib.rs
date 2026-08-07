@@ -15,6 +15,7 @@ pub mod environment_runner;
 pub mod self_hosted_runner;
 pub mod services;
 pub mod tools;
+pub mod tui;
 pub mod utils;
 
 /// Mirror of bun:bundle `feature("X")`. Cargo features are snake_case;

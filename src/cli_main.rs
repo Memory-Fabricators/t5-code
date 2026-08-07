@@ -1,6 +1,6 @@
 //! Port of `src/main.tsx` — clap shell skeleton (Commander parity deferred incrementally).
 //!
-//! Interactive REPL is not yet ported; `-p` runs a Read/Write tool loop.
+//! Interactive REPL: ratatui TUI. `-p`: non-interactive tool loop.
 
 use clap::{Parser, Subcommand};
 
@@ -163,8 +163,11 @@ where
         }
     }
 
-    eprintln!("not yet ported: interactive REPL (ratatui later)");
-    std::process::exit(1);
+    let model = crate::utils::model::resolve_model(cli.model.as_deref());
+    if let Err(e) = crate::tui::run(model).await {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
 }
 
 fn run_doctor() {
