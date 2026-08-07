@@ -77,7 +77,7 @@ async fn main() {
                 None => t5_code::utils::model::get_main_loop_model(),
             }
         };
-        match t5_code::constants::prompts::get_system_prompt(&[], &model).await {
+        match t5_code::constants::prompts::get_system_prompt(&[], &model, &[]).await {
             Ok(prompt) => println!("{}", prompt.join("\n")),
             Err(e) => exit_err(e),
         }

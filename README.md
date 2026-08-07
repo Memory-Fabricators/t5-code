@@ -1,5 +1,5 @@
-# claude-code-sourcemap
+# claude-code-rewrite
 
 > [!WARNING]
-> This repository is **unofficial** and is reconstructed from the public npm package and source map analysis, **for research purposes only**.
-> It does **not** represent the original internal development repository structure.
+> This repository is **unofficial** and is rewritten from the public npm package and source map analysis.
+> It does **not** contain any internal code specific to the official Claude Code CLI.

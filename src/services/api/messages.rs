@@ -5,7 +5,9 @@ use serde_json::json;
 
 use crate::PortResult;
 use crate::constants::oauth::{BASE_API_URL, OAUTH_BETA_HEADER};
-use crate::constants::system::build_oauth_system_blocks;
+use crate::constants::prompts::get_system_prompt;
+use crate::constants::system::build_system_blocks;
+use crate::constants::tool_names::default_enabled_tool_names;
 use crate::utils::auth::{check_and_refresh_oauth_token_if_needed, is_claude_ai_subscriber};
 use crate::utils::http::{get_auth_headers, get_user_agent};
 
@@ -73,18 +75,20 @@ pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortR
         return Err(rootcause::report!(err).into());
     }
 
-    // OAuth subscribers must include attribution fingerprint in `system` or
-    // the API returns a misleading 429 rate_limit_error.
-    let mut body = json!({
+    // System prompt: attribution + CLI prefix + core getSystemPrompt sections
+    // (same order as TS claude.ts). OAuth requires attribution or the API
+    // returns a misleading 429.
+    let tool_names = default_enabled_tool_names();
+    let core = get_system_prompt(&tool_names, model, &[]).await?;
+    let system_blocks = build_system_blocks(prompt, true, &core);
+    let body = json!({
         "model": model,
         "max_tokens": max_tokens,
         "messages": [
             { "role": "user", "content": prompt }
         ],
+        "system": system_blocks,
     });
-    if is_claude_ai_subscriber() {
-        body["system"] = serde_json::Value::Array(build_oauth_system_blocks(prompt, true));
-    }
 
     let url = format!("{BASE_API_URL}/v1/messages");
 
@@ -101,7 +105,6 @@ pub async fn create_message(model: &str, prompt: &str, max_tokens: u32) -> PortR
 
     let mut betas: Vec<String> = Vec::new();
     if is_claude_ai_subscriber() {
-        // Match getAllModelBetas for non-Haiku OAuth: claude-code + oauth betas
         betas.push(CLI_BETA.into());
         betas.push(OAUTH_BETA_HEADER.into());
     }

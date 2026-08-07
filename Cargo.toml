@@ -3,6 +3,7 @@ name = "t5-code"
 version = "0.1.0"
 edition = "2024"
 autobins = false
+license = "Apache-2.0"
 
 [[bin]]
 name = "t5-code"

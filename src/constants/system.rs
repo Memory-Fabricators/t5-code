@@ -32,10 +32,12 @@ pub fn get_attribution_header(fingerprint: &str) -> String {
     format!("x-anthropic-billing-header: cc_version={version}; cc_entrypoint={entrypoint};")
 }
 
-/// Build the system blocks required for OAuth-attributed Messages requests.
-pub fn build_oauth_system_blocks(
+/// Build API `system` blocks matching TS order in `claude.ts`:
+/// attribution → CLI prefix → core `getSystemPrompt` sections.
+pub fn build_system_blocks(
     first_user_message: &str,
     is_non_interactive: bool,
+    core_sections: &[String],
 ) -> Vec<serde_json::Value> {
     let fp = compute_fingerprint(first_user_message, env!("CARGO_PKG_VERSION"));
     let mut blocks = Vec::new();
@@ -47,5 +49,18 @@ pub fn build_oauth_system_blocks(
         "type": "text",
         "text": get_cli_sysprompt_prefix(is_non_interactive),
     }));
+    for section in core_sections {
+        if !section.is_empty() {
+            blocks.push(serde_json::json!({ "type": "text", "text": section }));
+        }
+    }
     blocks
+}
+
+/// OAuth-only helper kept for callers that only need attr + prefix.
+pub fn build_oauth_system_blocks(
+    first_user_message: &str,
+    is_non_interactive: bool,
+) -> Vec<serde_json::Value> {
+    build_system_blocks(first_user_message, is_non_interactive, &[])
 }
