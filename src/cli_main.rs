@@ -1,6 +1,6 @@
 //! Port of `src/main.tsx` — clap shell skeleton (Commander parity deferred incrementally).
 //!
-//! Full interactive/headless agent loop is not yet ported.
+//! Interactive REPL is not yet ported; `-p` runs a Read/Write tool loop.
 
 use clap::{Parser, Subcommand};
 
@@ -151,7 +151,7 @@ where
             }
         };
         let model = crate::utils::model::resolve_model(cli.model.as_deref());
-        match crate::services::api::messages::create_message(&model, &prompt, 1024).await {
+        match crate::services::api::messages::create_message(&model, &prompt, 8192).await {
             Ok(text) => {
                 println!("{text}");
                 return;

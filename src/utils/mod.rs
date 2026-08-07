@@ -8,6 +8,7 @@ pub mod early_input;
 pub mod env;
 pub mod env_utils;
 pub mod errors;
+pub mod expand_path;
 pub mod fingerprint;
 pub mod http;
 pub mod model;
