@@ -1,0 +1,52 @@
+[package]
+name = "t5-code"
+version = "0.1.0"
+edition = "2024"
+autobins = false
+
+[[bin]]
+name = "t5-code"
+path = "src/entrypoints/cli.rs"
+
+[features]
+default = [
+    "ablation_baseline",
+    "dump_system_prompt",
+    "chicago_mcp",
+    "daemon",
+    "bridge_mode",
+    "bg_sessions",
+    "templates",
+    "byoc_environment_runner",
+    "self_hosted_runner",
+]
+ablation_baseline = []
+dump_system_prompt = []
+chicago_mcp = []
+daemon = []
+bridge_mode = []
+bg_sessions = []
+templates = []
+byoc_environment_runner = []
+self_hosted_runner = []
+
+[profile.dev]
+opt-level = 1
+split-debuginfo = "packed"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+strip = "symbols"
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "macros", "std", "all-widgets"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream", "json", "http2"] }
+rootcause = "0.13.0"
+serde = { version = "1.0.229", default-features = false, features = ["derive"] }
+simd-json = { version = "0.17.3", default-features = false, features = ["serde_impl"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "sync", "time"] }

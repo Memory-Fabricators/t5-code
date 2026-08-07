@@ -1,0 +1,13 @@
+//! Port of `src/utils/` — modules grown file-by-file from the TS tree.
+
+pub mod auth;
+pub mod claude_in_chrome;
+pub mod computer_use;
+pub mod config;
+pub mod early_input;
+pub mod model;
+pub mod process;
+pub mod sinks;
+pub mod startup_profiler;
+pub mod worktree;
+pub mod worktree_mode_enabled;
