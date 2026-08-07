@@ -2,6 +2,7 @@
 
 mod app;
 mod draw;
+mod model_picker;
 mod run;
 mod theme;
 

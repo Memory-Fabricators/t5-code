@@ -17,6 +17,10 @@ pub const TEXT: Color = Color::Rgb(230, 230, 230);
 pub const USER_BG: Color = Color::Rgb(55, 55, 55);
 /// Error text.
 pub const ERROR: Color = Color::Rgb(220, 80, 80);
+/// Pane / permission border (`theme.permission`).
+pub const PERMISSION: Color = Color::Rgb(87, 105, 247);
+/// "Select model" title (`theme.remember`).
+pub const REMEMBER: Color = Color::Rgb(100, 140, 255);
 
 /// Prompt pointer (Ink `figures.pointer`).
 pub const PROMPT_GLYPH: &str = "❯";

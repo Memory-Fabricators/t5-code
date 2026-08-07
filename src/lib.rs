@@ -8,6 +8,7 @@ use rootcause::Report;
 pub mod bridge;
 pub mod cli;
 pub mod cli_main;
+pub mod commands;
 pub mod constants;
 pub mod daemon;
 pub mod entrypoints;

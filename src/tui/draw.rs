@@ -12,11 +12,20 @@ use super::theme::{
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
-    // History (flex) · spinner (1) · prompt hairlines+row (3) · footer (1)
+    let suggest_h = if app.suggestions.is_empty() {
+        0
+    } else {
+        (app.suggestions.items.len() as u16)
+            .min(6)
+            .saturating_add(0)
+    };
+
+    // History · suggestions · spinner · prompt · footer
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(2),
+            Constraint::Length(suggest_h),
             Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Length(1),
@@ -24,9 +33,16 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .split(frame.area());
 
     draw_history(frame, app, chunks[0]);
-    draw_spinner(frame, app, chunks[1]);
-    draw_prompt(frame, app, chunks[2]);
-    draw_footer(frame, app, chunks[3]);
+    if suggest_h > 0 {
+        draw_suggestions(frame, app, chunks[1]);
+    }
+    draw_spinner(frame, app, chunks[2]);
+    draw_prompt(frame, app, chunks[3]);
+    draw_footer(frame, app, chunks[4]);
+
+    if let Some(picker) = &app.model_picker {
+        picker.draw(frame, frame.area());
+    }
 }
 
 fn draw_history(frame: &mut Frame, app: &App, area: Rect) {
@@ -135,6 +151,36 @@ fn draw_history(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(visible), area);
 }
 
+fn draw_suggestions(frame: &mut Frame, app: &App, area: Rect) {
+    if app.suggestions.is_empty() || area.height == 0 {
+        return;
+    }
+    let width = area.width as usize;
+    let mut lines: Vec<Line> = Vec::new();
+    let max = area.height as usize;
+    for (i, item) in app.suggestions.items.iter().enumerate().take(max) {
+        let selected = i == app.suggestions.selected;
+        let pointer = if selected { "❯ " } else { "  " };
+        let name_style = if selected {
+            Style::default().fg(CLAUDE).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(TEXT)
+        };
+        let mut spans = vec![
+            Span::styled(pointer, Style::default().fg(CLAUDE)),
+            Span::styled(item.display.clone(), name_style),
+        ];
+        if !item.description.is_empty() {
+            spans.push(Span::styled(
+                format!("  {}", item.description),
+                Style::default().fg(SUBTLE),
+            ));
+        }
+        lines.push(truncate_line(Line::from(spans), width));
+    }
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
 fn draw_spinner(frame: &mut Frame, app: &App, area: Rect) {
     let width = area.width as usize;
     if !app.busy {
@@ -181,11 +227,15 @@ fn draw_prompt(frame: &mut Frame, app: &App, area: Rect) {
         ])
     } else {
         let cursor = if app.cursor_visible { "█" } else { " " };
-        Line::from(vec![
+        let mut spans = vec![
             Span::styled(format!("{PROMPT_GLYPH} "), glyph_style),
             Span::styled(app.input.clone(), Style::default().fg(TEXT)),
-            Span::styled(cursor, Style::default().fg(TEXT)),
-        ])
+        ];
+        if let Some(ghost) = app.ghost_suffix() {
+            spans.push(Span::styled(ghost, Style::default().fg(SUBTLE)));
+        }
+        spans.push(Span::styled(cursor, Style::default().fg(TEXT)));
+        Line::from(spans)
     };
 
     frame.render_widget(
@@ -197,10 +247,21 @@ fn draw_prompt(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let left = if app.busy {
         "esc to interrupt · ctrl+c to exit"
+    } else if !app.suggestions.is_empty() {
+        "tab to complete · ↑↓ select · esc dismiss"
+    } else if app.displayed_effort().is_some() {
+        "tab/shift+tab effort · ? shortcuts"
     } else {
         "? for shortcuts"
     };
-    let right = short_model(&app.model);
+    let right = {
+        let model = short_model(&app.model);
+        if let Some(e) = app.displayed_effort() {
+            format!("{model} · {} {}", e.symbol(), e.as_str())
+        } else {
+            model
+        }
+    };
     let width = area.width as usize;
     let left_w = display_width(left);
     let right_w = display_width(&right);

@@ -14,6 +14,8 @@ use crate::utils::auth::{check_and_refresh_oauth_token_if_needed, is_claude_ai_s
 use crate::utils::claudemd::{get_user_context, prepend_user_context};
 use crate::utils::http::{get_auth_headers, get_user_agent};
 
+use crate::utils::effort::{self, EffortLevel};
+
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const CLI_BETA: &str = "claude-code-20250219";
 const MAX_TOOL_TURNS: usize = 20;
@@ -115,19 +117,23 @@ async fn create_message_turn(
     messages: &Value,
     tools: &[Value],
     max_tokens: u32,
+    effort: Option<EffortLevel>,
 ) -> PortResult<MessagesResponse> {
     let auth = get_auth_headers();
     if let Some(err) = auth.error {
         return Err(rootcause::report!(err).into());
     }
 
-    let body = json!({
+    let mut body = json!({
         "model": model,
         "max_tokens": max_tokens,
         "messages": messages,
         "system": system_blocks,
         "tools": tools,
     });
+    if let Some(level) = effort.filter(|_| effort::model_supports_effort(model)) {
+        body["output_config"] = json!({ "effort": level.as_str() });
+    }
 
     let url = format!("{BASE_API_URL}/v1/messages");
 
@@ -181,11 +187,13 @@ async fn run_tool_loop(
     tools: &[Value],
     session: &mut ToolSession,
     max_tokens: u32,
+    effort: Option<EffortLevel>,
 ) -> PortResult<String> {
     let mut final_text = String::new();
 
     for _ in 0..MAX_TOOL_TURNS {
-        let resp = create_message_turn(model, system_blocks, messages, tools, max_tokens).await?;
+        let resp =
+            create_message_turn(model, system_blocks, messages, tools, max_tokens, effort).await?;
 
         let tool_uses: Vec<&ContentBlock> = resp
             .content
@@ -237,10 +245,12 @@ pub struct Conversation {
     is_non_interactive: bool,
     core_sections: Vec<String>,
     system_blocks: Option<Vec<Value>>,
+    first_user_message: String,
     tools: Vec<Value>,
     messages: Value,
     session: ToolSession,
     context_seeded: bool,
+    effort: Option<EffortLevel>,
 }
 
 impl Conversation {
@@ -249,6 +259,7 @@ impl Conversation {
         let tool_names = enabled_tool_names();
         let tools = api_tool_definitions();
         let core_sections = get_system_prompt(&tool_names, model, &[]).await?;
+        let effort = effort::resolve_applied_effort(model, effort::get_session_effort());
 
         Ok(Self {
             model: model.to_string(),
@@ -256,16 +267,45 @@ impl Conversation {
             is_non_interactive,
             core_sections,
             system_blocks: None,
+            first_user_message: String::new(),
             tools,
             messages: json!([]),
             session: ToolSession::default(),
             context_seeded: false,
+            effort,
         })
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    pub fn set_effort(&mut self, effort: Option<EffortLevel>) {
+        self.effort = effort::resolve_applied_effort(&self.model, effort);
+    }
+
+    /// Switch model mid-session; rebuilds system prompt sections.
+    pub async fn set_model(&mut self, model: &str) -> PortResult<()> {
+        self.model = model.to_string();
+        self.effort = effort::resolve_applied_effort(model, effort::get_session_effort());
+        let tool_names = enabled_tool_names();
+        self.core_sections = get_system_prompt(&tool_names, model, &[]).await?;
+        if self.context_seeded {
+            self.system_blocks = Some(build_system_blocks(
+                &self.first_user_message,
+                self.is_non_interactive,
+                &self.core_sections,
+            ));
+        } else {
+            self.system_blocks = None;
+        }
+        Ok(())
     }
 
     /// Append a user turn and run until the model stops calling tools.
     pub async fn submit(&mut self, user_text: &str) -> PortResult<String> {
         if self.system_blocks.is_none() {
+            self.first_user_message = user_text.to_string();
             self.system_blocks = Some(build_system_blocks(
                 user_text,
                 self.is_non_interactive,
@@ -289,6 +329,7 @@ impl Conversation {
             &self.tools,
             &mut self.session,
             self.max_tokens,
+            self.effort,
         )
         .await
     }
