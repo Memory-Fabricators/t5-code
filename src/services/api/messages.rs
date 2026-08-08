@@ -15,6 +15,9 @@ use crate::utils::claudemd::{get_user_context, prepend_user_context};
 use crate::utils::http::{get_auth_headers, get_user_agent};
 
 use crate::utils::effort::{self, EffortLevel};
+use crate::utils::session::{
+    self, persist_new_messages, regenerate_session_id, reset_persist_cursor,
+};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const CLI_BETA: &str = "claude-code-20250219";
@@ -339,7 +342,7 @@ impl Conversation {
         }
 
         let system = self.system_blocks.as_ref().unwrap();
-        run_tool_loop(
+        let result = run_tool_loop(
             &self.model,
             system,
             &mut self.messages,
@@ -348,7 +351,11 @@ impl Conversation {
             self.max_tokens,
             self.effort,
         )
-        .await
+        .await;
+
+        // Persist even on error if some turns were written (best-effort).
+        let _ = persist_new_messages(&self.messages);
+        result
     }
 
     /// Reset messages and tool session (slash `/clear`). Keeps model/effort/tools.
@@ -363,11 +370,81 @@ impl Conversation {
         self.system_blocks = None;
         self.first_user_message.clear();
         crate::utils::plans::clear_plan_slug();
+        regenerate_session_id();
+        reset_persist_cursor();
     }
 
     /// Attach a TUI interaction bridge for AskUserQuestion / ExitPlanMode.
     pub fn set_interaction(&mut self, bridge: crate::tools::interaction::InteractionBridge) {
         self.session.interaction = Some(bridge);
+    }
+
+    /// Load messages from a persisted session and adopt its session id.
+    pub fn load_session_messages(&mut self, messages: Vec<Value>) {
+        self.messages = Value::Array(messages);
+        self.context_seeded = !self
+            .messages
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(true);
+        if let Some(arr) = self.messages.as_array() {
+            // Seed system blocks from first user text if present.
+            for msg in arr {
+                if msg.get("role").and_then(|r| r.as_str()) == Some("user")
+                    && let Some(text) = msg.get("content").and_then(|c| c.as_str())
+                {
+                    self.first_user_message = text.to_string();
+                    self.system_blocks = Some(build_system_blocks(
+                        text,
+                        self.is_non_interactive,
+                        &self.core_sections,
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+
+    pub fn session_id(&self) -> String {
+        session::get_session_id()
+    }
+
+    /// Extract display lines (user/assistant text) for the TUI history.
+    pub fn display_lines(&self) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        let Some(arr) = self.messages.as_array() else {
+            return out;
+        };
+        for msg in arr {
+            let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+            match role {
+                "user" => {
+                    if let Some(text) = msg.get("content").and_then(|c| c.as_str()) {
+                        if text.contains("<system-reminder>") || text.contains("<local-command") {
+                            continue;
+                        }
+                        out.push(("user".into(), text.to_string()));
+                    }
+                }
+                "assistant" => {
+                    let text = match msg.get("content") {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(Value::Array(parts)) => parts
+                            .iter()
+                            .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
+                            .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                            .collect::<Vec<_>>()
+                            .join(""),
+                        _ => String::new(),
+                    };
+                    if !text.is_empty() {
+                        out.push(("assistant".into(), text));
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
     }
 }
 

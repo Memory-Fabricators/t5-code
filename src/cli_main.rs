@@ -35,6 +35,14 @@ pub struct Cli {
     #[arg(long = "model")]
     pub model: Option<String>,
 
+    /// Resume the most recent session in this directory
+    #[arg(long = "continue")]
+    pub continue_session: bool,
+
+    /// Resume a specific session UUID
+    #[arg(long = "resume")]
+    pub resume: Option<String>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -164,7 +172,14 @@ where
     }
 
     let model = crate::utils::model::resolve_model(cli.model.as_deref());
-    if let Err(e) = crate::tui::run(model).await {
+    let resume_id = if let Some(id) = cli.resume.as_deref() {
+        Some(id.to_string())
+    } else if cli.continue_session {
+        crate::utils::session::most_recent_session_id()
+    } else {
+        None
+    };
+    if let Err(e) = crate::tui::run(model, resume_id).await {
         eprintln!("{e}");
         std::process::exit(1);
     }

@@ -35,6 +35,11 @@ pub enum CommandAction {
     StartLogin,
     /// Clear conversation history + tool session.
     ClearConversation,
+    /// Resume a session by id, or list if `session_id` is None and list_only.
+    Resume {
+        session_id: Option<String>,
+        list_only: bool,
+    },
 }
 
 /// Metadata for autocomplete + `/help`.
@@ -66,6 +71,11 @@ pub fn builtin_commands() -> &'static [BuiltinCommand] {
             name: "clear",
             aliases: &["reset", "new"],
             description: "Clear conversation history",
+        },
+        BuiltinCommand {
+            name: "resume",
+            aliases: &["continue"],
+            description: "Resume a previous session",
         },
         BuiltinCommand {
             name: "help",
@@ -117,6 +127,34 @@ pub async fn dispatch(
             )))
         }
         "clear" | "reset" | "new" => Ok(CommandAction::ClearConversation),
+        "resume" | "continue" => {
+            let args = args.trim();
+            if name == "continue" && args.is_empty() {
+                Ok(CommandAction::Resume {
+                    session_id: crate::utils::session::most_recent_session_id(),
+                    list_only: false,
+                })
+            } else if args.is_empty() || args == "list" || args == "--list" {
+                Ok(CommandAction::Resume {
+                    session_id: None,
+                    list_only: true,
+                })
+            } else if args == "latest" {
+                Ok(CommandAction::Resume {
+                    session_id: crate::utils::session::most_recent_session_id(),
+                    list_only: false,
+                })
+            } else if crate::utils::session::validate_uuid(args) {
+                Ok(CommandAction::Resume {
+                    session_id: Some(args.to_string()),
+                    list_only: false,
+                })
+            } else {
+                Err(format!(
+                    "Usage: /resume [session-id|latest|list]  (got {args:?})"
+                ))
+            }
+        }
         "help" => Ok(CommandAction::Message(CommandOutcome::message(help_text()))),
         "exit" | "quit" => Ok(CommandAction::Message(CommandOutcome::message(
             "Use Esc or Ctrl+C to exit.",

@@ -83,14 +83,24 @@ impl Drop for TerminalGuard {
 }
 
 /// Enter the interactive REPL. Restores the terminal on exit.
-pub async fn run(model: String) -> PortResult<()> {
+pub async fn run(model: String, resume_session_id: Option<String>) -> PortResult<()> {
     // Stop the early-input stdin thread BEFORE enabling raw mode — otherwise it
     // races crossterm for keystrokes and corrupts the display.
     stop_capturing_early_input();
     let early = consume_early_input();
 
     // Build conversation while still in cooked mode (network / system prompt).
-    let conversation = Conversation::new(&model, 8192, false).await?;
+    let mut conversation = Conversation::new(&model, 8192, false).await?;
+    if let Some(id) = resume_session_id.as_deref() {
+        match crate::utils::session::load_messages_from_transcript(id) {
+            Ok(msgs) => {
+                conversation.load_session_messages(msgs);
+            }
+            Err(e) => {
+                eprintln!("Warning: could not resume session {id}: {e}");
+            }
+        }
+    }
 
     // Default Ink is not alternate-screen; only use it when explicitly requested.
     let alt_screen = std::env::var("CLAUDE_CODE_NO_FLICKER")
@@ -141,6 +151,20 @@ async fn run_app(
     early: String,
 ) -> PortResult<()> {
     let mut app = App::new(model.clone());
+    let resumed_lines = conversation.display_lines();
+    for (role, text) in &resumed_lines {
+        match role.as_str() {
+            "user" => app.push(Role::User, text.clone()),
+            "assistant" => app.push(Role::Assistant, text.clone()),
+            _ => {}
+        }
+    }
+    if !resumed_lines.is_empty() {
+        app.push(
+            Role::System,
+            format!("Resumed session {}", conversation.session_id()),
+        );
+    }
     if !early.is_empty() {
         app.set_input(early);
     }
@@ -449,7 +473,63 @@ async fn run_app(
                                 conv.clear_conversation();
                             }
                             let _ = terminal.clear();
-                            app.push(Role::System, "Conversation cleared.");
+                            app.push(
+                                Role::System,
+                                format!(
+                                    "Conversation cleared. New session {}",
+                                    crate::utils::session::get_session_id()
+                                ),
+                            );
+                        }
+                        Ok(CommandAction::Resume {
+                            session_id,
+                            list_only,
+                        }) => {
+                            if list_only || session_id.is_none() {
+                                let sessions = crate::utils::session::list_sessions(15);
+                                if sessions.is_empty() {
+                                    app.push(
+                                        Role::System,
+                                        "No saved sessions in this directory. Chat turns are persisted automatically.",
+                                    );
+                                } else {
+                                    let mut lines =
+                                        vec!["Recent sessions (use /resume <id>):".to_string()];
+                                    for s in sessions {
+                                        let title = s
+                                            .custom_title
+                                            .or(s.last_prompt)
+                                            .unwrap_or_else(|| "(no prompt)".into());
+                                        lines.push(format!(
+                                            "  {}  {}  ({} msgs)",
+                                            &s.session_id[..8.min(s.session_id.len())],
+                                            title,
+                                            s.message_count
+                                        ));
+                                        lines.push(format!("     {}", s.session_id));
+                                    }
+                                    app.push(Role::System, lines.join("\n"));
+                                }
+                            } else if let Some(id) = session_id {
+                                match crate::utils::session::load_messages_from_transcript(&id) {
+                                    Ok(msgs) => {
+                                        if let Some(conv) = conversation.as_mut() {
+                                            conv.load_session_messages(msgs);
+                                            app.history.clear();
+                                            for (role, text) in conv.display_lines() {
+                                                match role.as_str() {
+                                                    "user" => app.push(Role::User, text),
+                                                    "assistant" => app.push(Role::Assistant, text),
+                                                    _ => {}
+                                                }
+                                            }
+                                            let _ = terminal.clear();
+                                            app.push(Role::System, format!("Resumed session {id}"));
+                                        }
+                                    }
+                                    Err(e) => app.push(Role::Error, e),
+                                }
+                            }
                         }
                         Ok(CommandAction::Message(outcome)) => {
                             if let Some(new_model) = outcome.new_model {

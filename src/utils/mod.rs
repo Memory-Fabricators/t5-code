@@ -19,6 +19,7 @@ pub mod model_options;
 pub mod plans;
 pub mod process;
 pub mod secure_storage;
+pub mod session;
 pub mod sinks;
 pub mod startup_profiler;
 pub mod worktree;
