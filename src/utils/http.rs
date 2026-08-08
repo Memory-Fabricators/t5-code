@@ -19,7 +19,7 @@ pub fn get_user_agent() -> String {
     )
 }
 
-/// OAuth Bearer + beta, or x-api-key from ANTHROPIC_API_KEY.
+/// OAuth Bearer + beta, or x-api-key from ANTHROPIC_API_KEY / primaryApiKey.
 pub fn get_auth_headers() -> AuthHeaders {
     if is_claude_ai_subscriber() {
         match get_claude_ai_oauth_tokens() {
@@ -40,6 +40,11 @@ pub fn get_auth_headers() -> AuthHeaders {
         }
     } else if has_anthropic_api_key_env() {
         let key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+        AuthHeaders {
+            headers: vec![("x-api-key".into(), key)],
+            error: None,
+        }
+    } else if let Some(key) = crate::utils::auth::get_primary_api_key() {
         AuthHeaders {
             headers: vec![("x-api-key".into(), key)],
             error: None,

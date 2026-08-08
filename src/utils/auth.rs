@@ -199,6 +199,24 @@ pub fn store_oauth_account_info(account: OauthAccountInfo) {
     });
 }
 
+/// Persist a Console-managed API key into global config (`primaryApiKey`).
+pub fn save_api_key(api_key: &str) -> Result<(), String> {
+    save_global_config(|mut current| {
+        current.extra.insert("primaryApiKey".into(), json!(api_key));
+        current
+    });
+    Ok(())
+}
+
+pub fn get_primary_api_key() -> Option<String> {
+    get_global_config()
+        .extra
+        .get("primaryApiKey")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 /// Clear secure storage + oauthAccount from global config.
 pub fn perform_logout() -> Result<(), String> {
     if !secure_storage::delete() {
@@ -374,7 +392,7 @@ fn rand_jitter_ms() -> u64 {
 /// Redacted status payload (never includes access tokens).
 pub fn auth_status_json() -> serde_json::Value {
     let (source, has_token) = get_auth_token_source();
-    let has_api_key = has_anthropic_api_key_env();
+    let has_api_key = has_anthropic_api_key_env() || get_primary_api_key().is_some();
     let logged_in = has_token || has_api_key;
 
     let mut auth_method = "none".to_string();

@@ -41,6 +41,8 @@ pub struct App {
     pub model_picker: Option<ModelPicker>,
     /// Slash-command autocomplete when input starts with `/`.
     pub suggestions: CommandSuggestions,
+    /// Active AskUser / ExitPlan overlay.
+    pub pending_interaction: Option<crate::tools::interaction::PendingUi>,
 }
 
 impl App {
@@ -58,6 +60,7 @@ impl App {
             cursor_visible: true,
             model_picker: None,
             suggestions: CommandSuggestions::default(),
+            pending_interaction: None,
         }
     }
 

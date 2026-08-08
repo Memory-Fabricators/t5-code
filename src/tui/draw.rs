@@ -43,6 +43,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if let Some(picker) = &app.model_picker {
         picker.draw(frame, frame.area());
     }
+    if let Some(ui) = &app.pending_interaction {
+        let area = super::ask_user::interaction_overlay_area(frame.area());
+        super::ask_user::draw_interaction(frame, area, ui);
+    }
 }
 
 fn draw_history(frame: &mut Frame, app: &App, area: Rect) {

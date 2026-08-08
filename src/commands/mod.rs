@@ -31,6 +31,10 @@ pub enum CommandAction {
     Message(CommandOutcome),
     /// Open the interactive ModelPicker overlay (`/model` with no args).
     OpenModelPicker,
+    /// Start browser OAuth login flow.
+    StartLogin,
+    /// Clear conversation history + tool session.
+    ClearConversation,
 }
 
 /// Metadata for autocomplete + `/help`.
@@ -47,6 +51,21 @@ pub fn builtin_commands() -> &'static [BuiltinCommand] {
             name: "model",
             aliases: &[],
             description: "Set the AI model (opens picker)",
+        },
+        BuiltinCommand {
+            name: "login",
+            aliases: &[],
+            description: "Sign in with your Anthropic account",
+        },
+        BuiltinCommand {
+            name: "logout",
+            aliases: &[],
+            description: "Sign out of your Anthropic account",
+        },
+        BuiltinCommand {
+            name: "clear",
+            aliases: &["reset", "new"],
+            description: "Clear conversation history",
         },
         BuiltinCommand {
             name: "help",
@@ -90,6 +109,14 @@ pub async fn dispatch(
 ) -> Result<CommandAction, String> {
     match name {
         "model" => Ok(model::run(args, current_model).await),
+        "login" => Ok(CommandAction::StartLogin),
+        "logout" => {
+            crate::utils::auth::perform_logout().map_err(|e| e)?;
+            Ok(CommandAction::Message(CommandOutcome::message(
+                "Successfully logged out from your Anthropic account.",
+            )))
+        }
+        "clear" | "reset" | "new" => Ok(CommandAction::ClearConversation),
         "help" => Ok(CommandAction::Message(CommandOutcome::message(help_text()))),
         "exit" | "quit" => Ok(CommandAction::Message(CommandOutcome::message(
             "Use Esc or Ctrl+C to exit.",

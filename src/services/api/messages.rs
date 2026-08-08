@@ -192,6 +192,23 @@ async fn run_tool_loop(
     let mut final_text = String::new();
 
     for _ in 0..MAX_TOOL_TURNS {
+        if session.inject_plan_reminder {
+            session.inject_plan_reminder = false;
+            let plan_path = session
+                .plan_file_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "(plan file)".into());
+            if let Some(arr) = messages.as_array_mut() {
+                arr.push(json!({
+                    "role": "user",
+                    "content": format!(
+                        "<system-reminder>Plan mode is active. Design an approach, write it to {plan_path}, use AskUserQuestion for trade-offs, and call ExitPlanMode when ready for user approval. Avoid unrelated code edits.</system-reminder>"
+                    )
+                }));
+            }
+        }
+
         let resp =
             create_message_turn(model, system_blocks, messages, tools, max_tokens, effort).await?;
 
@@ -332,6 +349,25 @@ impl Conversation {
             self.effort,
         )
         .await
+    }
+
+    /// Reset messages and tool session (slash `/clear`). Keeps model/effort/tools.
+    pub fn clear_conversation(&mut self) {
+        let interaction = self.session.interaction.clone();
+        self.messages = json!([]);
+        self.session = ToolSession {
+            interaction,
+            ..ToolSession::default()
+        };
+        self.context_seeded = false;
+        self.system_blocks = None;
+        self.first_user_message.clear();
+        crate::utils::plans::clear_plan_slug();
+    }
+
+    /// Attach a TUI interaction bridge for AskUserQuestion / ExitPlanMode.
+    pub fn set_interaction(&mut self, bridge: crate::tools::interaction::InteractionBridge) {
+        self.session.interaction = Some(bridge);
     }
 }
 

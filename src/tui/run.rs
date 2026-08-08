@@ -14,10 +14,13 @@ use ratatui::{Terminal, TerminalOptions, Viewport};
 use tokio::task::JoinHandle;
 
 use crate::PortResult;
+use crate::cli::handlers::auth::run_browser_login;
 use crate::commands::{self, CommandAction, parse_slash};
 use crate::services::api::messages::Conversation;
+use crate::tools::interaction::{InteractionBridge, PendingUi};
 use crate::utils::early_input::{consume_early_input, stop_capturing_early_input};
 use crate::utils::effort::CycleDir;
+use tokio::sync::mpsc;
 
 use super::app::{App, Role};
 use super::draw;
@@ -28,9 +31,17 @@ struct TurnOutcome {
     result: Result<String, String>,
 }
 
+struct LoginOutcome {
+    result: Result<(), String>,
+}
+
 enum Pending {
     Idle,
     Running(JoinHandle<TurnOutcome>),
+    LoggingIn {
+        handle: JoinHandle<LoginOutcome>,
+        paste_tx: mpsc::UnboundedSender<String>,
+    },
 }
 
 /// Ensures raw mode / alt-screen are undone even if the REPL errors out.
@@ -133,7 +144,11 @@ async fn run_app(
     if !early.is_empty() {
         app.set_input(early);
     }
+    let (bridge, mut interaction_rx) = InteractionBridge::pair();
     let mut conversation = Some(conversation);
+    if let Some(conv) = conversation.as_mut() {
+        conv.set_interaction(bridge.clone());
+    }
     let mut pending = Pending::Idle;
 
     loop {
@@ -151,32 +166,62 @@ async fn run_app(
             break;
         }
 
-        // Poll in-flight query without blocking the UI.
-        if matches!(&pending, Pending::Running(h) if h.is_finished())
-            && let Pending::Running(handle) = std::mem::replace(&mut pending, Pending::Idle)
+        // Poll tool-loop interaction requests while a turn is running.
+        if app.pending_interaction.is_none()
+            && let Ok(req) = interaction_rx.try_recv()
         {
-            app.busy = false;
-            match handle.await {
-                Ok(outcome) => {
-                    conversation = Some(outcome.conversation);
-                    match outcome.result {
-                        Ok(reply) => {
-                            if reply.trim().is_empty() {
-                                app.push(Role::Assistant, "(no text response)");
-                            } else {
-                                app.push(Role::Assistant, reply);
+            app.pending_interaction = Some(PendingUi::from_request(req));
+        }
+
+        // Poll in-flight query / login without blocking the UI.
+        match &pending {
+            Pending::Running(h) if h.is_finished() => {
+                if let Pending::Running(handle) = std::mem::replace(&mut pending, Pending::Idle) {
+                    app.busy = false;
+                    match handle.await {
+                        Ok(outcome) => {
+                            conversation = Some(outcome.conversation);
+                            match outcome.result {
+                                Ok(reply) => {
+                                    if reply.trim().is_empty() {
+                                        app.push(Role::Assistant, "(no text response)");
+                                    } else {
+                                        app.push(Role::Assistant, reply);
+                                    }
+                                }
+                                Err(e) => {
+                                    app.push(Role::Error, e);
+                                }
                             }
                         }
                         Err(e) => {
-                            app.push(Role::Error, e);
+                            app.push(Role::Error, format!("task join error: {e}"));
+                            let mut conv = Conversation::new(&model, 8192, false).await?;
+                            conv.set_interaction(bridge.clone());
+                            conversation = Some(conv);
                         }
                     }
                 }
-                Err(e) => {
-                    app.push(Role::Error, format!("task join error: {e}"));
-                    conversation = Some(Conversation::new(&model, 8192, false).await?);
+            }
+            Pending::LoggingIn { handle, .. } if handle.is_finished() => {
+                if let Pending::LoggingIn { handle, .. } =
+                    std::mem::replace(&mut pending, Pending::Idle)
+                {
+                    app.busy = false;
+                    match handle.await {
+                        Ok(LoginOutcome { result: Ok(()) }) => {
+                            app.push(Role::System, "Login successful.");
+                        }
+                        Ok(LoginOutcome { result: Err(e) }) => {
+                            app.push(Role::Error, format!("Login failed: {e}"));
+                        }
+                        Err(e) => {
+                            app.push(Role::Error, format!("login task error: {e}"));
+                        }
+                    }
                 }
             }
+            _ => {}
         }
 
         if !event::poll(Duration::from_millis(50)).unwrap_or(false) {
@@ -193,7 +238,12 @@ async fn run_app(
 
         match key.code {
             KeyCode::Esc => {
-                if let Some(picker) = app.model_picker.take() {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Esc);
+                    if ui.response_tx.is_none() {
+                        app.pending_interaction = None;
+                    }
+                } else if let Some(picker) = app.model_picker.take() {
                     let result = picker.cancel(&app.model);
                     apply_picker_result(&mut app, &mut conversation, result).await;
                 } else if !app.suggestions.is_empty() {
@@ -224,6 +274,26 @@ async fn run_app(
             }
             KeyCode::PageDown if app.model_picker.is_none() && app.suggestions.is_empty() => {
                 app.history_offset = app.history_offset.saturating_sub(5);
+            }
+            KeyCode::Left if app.pending_interaction.is_some() => {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Left);
+                }
+            }
+            KeyCode::Right if app.pending_interaction.is_some() => {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Right);
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') if app.pending_interaction.is_some() => {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Up);
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') if app.pending_interaction.is_some() => {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Down);
+                }
             }
             KeyCode::Left if app.model_picker.is_some() => {
                 if let Some(p) = app.model_picker.as_mut() {
@@ -272,9 +342,26 @@ async fn run_app(
                 }
             }
             KeyCode::Enter => {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Enter);
+                    if ui.response_tx.is_none() {
+                        app.pending_interaction = None;
+                    }
+                    continue;
+                }
                 if let Some(picker) = app.model_picker.take() {
                     let result = picker.confirm();
                     apply_picker_result(&mut app, &mut conversation, result).await;
+                    continue;
+                }
+                // During login, Enter submits a pasted authorization code.
+                if let Pending::LoggingIn { paste_tx, .. } = &pending {
+                    let line = app.input.trim().to_string();
+                    if !line.is_empty() {
+                        let _ = paste_tx.send(line);
+                        app.clear_input();
+                        app.push(Role::System, "Submitted authorization code…");
+                    }
                     continue;
                 }
                 if app.busy {
@@ -310,6 +397,59 @@ async fn run_app(
                     match commands::dispatch(name, args, &app.model).await {
                         Ok(CommandAction::OpenModelPicker) => {
                             app.open_model_picker();
+                        }
+                        Ok(CommandAction::StartLogin) => {
+                            let (paste_tx, paste_rx) = mpsc::unbounded_channel();
+                            let (url_tx, mut url_rx) = mpsc::unbounded_channel::<String>();
+                            app.start_busy();
+                            app.push(
+                                Role::System,
+                                "Opening browser to sign in… (paste code#state here if needed)",
+                            );
+                            let handle = tokio::spawn(async move {
+                                let result = run_browser_login(
+                                    true,
+                                    move |url| {
+                                        let _ = url_tx.send(url);
+                                    },
+                                    Some(paste_rx),
+                                )
+                                .await
+                                .map(|_| ())
+                                .map_err(|e| e.to_string());
+                                LoginOutcome { result }
+                            });
+                            // Drain URL message once available (non-blocking poll below).
+                            pending = Pending::LoggingIn { handle, paste_tx };
+                            // Immediately check for URL notification.
+                            if let Ok(url) = url_rx.try_recv() {
+                                app.push(
+                                    Role::System,
+                                    format!("If the browser didn't open, visit:\n{url}"),
+                                );
+                            } else {
+                                // Stash receiver via a short poll — spawn watcher.
+                                let history_note = tokio::spawn(async move { url_rx.recv().await });
+                                // Store URL watcher on a side channel: poll with pending login.
+                                // Simpler: block briefly for URL (handler is sync before await).
+                                if let Ok(Ok(Some(url))) =
+                                    tokio::time::timeout(Duration::from_millis(200), history_note)
+                                        .await
+                                {
+                                    app.push(
+                                        Role::System,
+                                        format!("If the browser didn't open, visit:\n{url}"),
+                                    );
+                                }
+                            }
+                        }
+                        Ok(CommandAction::ClearConversation) => {
+                            app.history.clear();
+                            if let Some(conv) = conversation.as_mut() {
+                                conv.clear_conversation();
+                            }
+                            let _ = terminal.clear();
+                            app.push(Role::System, "Conversation cleared.");
                         }
                         Ok(CommandAction::Message(outcome)) => {
                             if let Some(new_model) = outcome.new_model {
@@ -358,18 +498,31 @@ async fn run_app(
                 });
                 pending = Pending::Running(handle);
             }
-            KeyCode::Backspace => {
-                if !app.busy && app.model_picker.is_none() {
-                    app.pop_input_char();
-                }
-            }
             KeyCode::Char(c) => {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Char(c));
+                    if ui.response_tx.is_none() {
+                        app.pending_interaction = None;
+                    }
+                    continue;
+                }
                 if app.model_picker.is_some() {
                     // j/k handled above; ignore other chars while picker is open
                     continue;
                 }
-                if !app.busy && !key.modifiers.contains(KeyModifiers::CONTROL) {
+                let allow_input = !app.busy || matches!(pending, Pending::LoggingIn { .. });
+                if allow_input && !key.modifiers.contains(KeyModifiers::CONTROL) {
                     app.push_input_char(c);
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(ui) = app.pending_interaction.as_mut() {
+                    let _ = super::ask_user::handle_key(ui, KeyCode::Backspace);
+                    continue;
+                }
+                let allow_input = !app.busy || matches!(pending, Pending::LoggingIn { .. });
+                if allow_input && app.model_picker.is_none() {
+                    app.pop_input_char();
                 }
             }
             _ => {}

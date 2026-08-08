@@ -1,6 +1,7 @@
 //! Port of `src/utils/` — modules grown file-by-file from the TS tree.
 
 pub mod auth;
+pub mod browser;
 pub mod claude_in_chrome;
 pub mod claudemd;
 pub mod computer_use;
@@ -15,6 +16,7 @@ pub mod fingerprint;
 pub mod http;
 pub mod model;
 pub mod model_options;
+pub mod plans;
 pub mod process;
 pub mod secure_storage;
 pub mod sinks;
